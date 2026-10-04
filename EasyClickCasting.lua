@@ -302,9 +302,11 @@ end
 
 local Solo, SoloPoignee
 
--- Version simple, si le modèle de cadre Blizzard n'est pas disponible
-local function CreerUniteSimple(parent)
-    local u = CreateFrame("Button", "ECCSoloUnitSimple", parent, "SecureUnitButtonTemplate")
+-- Cadre maison : on n'utilise pas le modèle CompactUnitFrame de Blizzard,
+-- car le piloter depuis un addon « contamine » son code, qui ne peut plus
+-- lire les valeurs secrètes du client (portée, etc.) et lève des erreurs.
+local function CreerUnite(parent)
+    local u = CreateFrame("Button", "ECCSoloUnit", parent, "SecureUnitButtonTemplate")
     u:SetAttribute("unit", "player")
     u:SetAttribute("*type1", "target")
     u:SetAttribute("*type2", "togglemenu")
@@ -325,28 +327,27 @@ local function CreerUniteSimple(parent)
     nom:SetPoint("CENTER")
     nom:SetText(UnitName("player"))
 
+    -- Les points de vie peuvent être des valeurs secrètes : on les passe
+    -- directement à la barre, sans jamais les tester ni les comparer.
     local function MAJ()
-        local max = UnitHealthMax("player") or 1
-        if max <= 0 then max = 1 end
-        barre:SetMinMaxValues(0, max)
-        barre:SetValue(UnitHealth("player") or 0)
+        barre:SetMinMaxValues(0, UnitHealthMax("player"))
+        barre:SetValue(UnitHealth("player"))
     end
     u:RegisterEvent("PLAYER_ENTERING_WORLD")
     u:RegisterEvent("UNIT_HEALTH")
     u:RegisterEvent("UNIT_MAXHEALTH")
     pcall(u.RegisterEvent, u, "UNIT_HEALTH_FREQUENT")
     u:SetScript("OnEvent", function(_, _, unit)
-        if not unit or unit == "player" then MAJ() end
+        if unit == nil or unit == "player" then pcall(MAJ) end
     end)
-    MAJ()
+    pcall(MAJ)
     return u
 end
 
 local function CreerSolo()
     if Solo or InCombatLockdown() then return end
     Solo = CreateFrame("Frame", "ECCSolo", UIParent, "SecureHandlerStateTemplate")
-    local opt = DefaultCompactUnitFrameSetupOptions
-    Solo:SetSize((opt and opt.width) or 72, (opt and opt.height) or 36)
+    Solo:SetSize(72, 36)
     Solo:SetMovable(true)
     Solo:SetClampedToScreen(true)
     local pos = DB.solo.pos
@@ -356,23 +357,8 @@ local function CreerSolo()
         Solo:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 30, -220)
     end
 
-    -- Le même cadre que ceux du jeu, si le client le permet
-    local u
-    if CompactUnitFrame_SetUpFrame and CompactUnitFrame_SetUnit and DefaultCompactUnitFrameSetup then
-        local ok, f = pcall(CreateFrame, "Button", "ECCSoloUnit", Solo, "CompactUnitFrameTemplate")
-        if ok and f then
-            local ok2 = pcall(function()
-                f:SetAllPoints(Solo)
-                CompactUnitFrame_SetUpFrame(f, DefaultCompactUnitFrameSetup)
-                CompactUnitFrame_SetUnit(f, "player")
-            end)
-            if ok2 then u = f else f:Hide() end
-        end
-    end
-    if not u then
-        u = CreerUniteSimple(Solo)
-        u:SetAllPoints(Solo)
-    end
+    local u = CreerUnite(Solo)
+    u:SetAllPoints(Solo)
     Ajouter(u)
 
     -- Poignée pour déplacer le cadre (visible seulement en mode déplacement)

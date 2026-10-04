@@ -2,7 +2,7 @@
 ## Title: EasyClickCasting
 ## Notes: Clic, molette et touches pour lancer des sorts depuis les cadres de groupe Blizzard (/ecc)
 ## Author: Kaladin
-## Version: 3.3
+## Version: 3.4
 ## SavedVariablesPerCharacter: EasyClickCastingDB
 
 EasyClickCasting.lua
