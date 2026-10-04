@@ -118,6 +118,10 @@ local function InitDB()
         EasyClickCastingDB.binds = {}
         for k, v in pairs(DefautsDeClasse()) do EasyClickCastingDB.binds[k] = v end
     end
+    -- Cadre de groupe en solo : activé par défaut
+    if type(EasyClickCastingDB.solo) ~= "table" then
+        EasyClickCastingDB.solo = { actif = true }
+    end
     DB = EasyClickCastingDB
 end
 
@@ -263,6 +267,8 @@ local function Scanner()
     end
 end
 
+local AppliquerSolo
+
 local function AppliquerTout()
     if not DB then return false end
     if InCombatLockdown() then
@@ -272,6 +278,7 @@ local function AppliquerTout()
     ClearOverrideBindings(header)
     AppliquerSurvol()
     for f in pairs(cadres) do AppliquerCadre(f) end
+    AppliquerSolo()
     return true
 end
 
@@ -280,11 +287,145 @@ if CompactUnitFrame_SetUpFrame then
     hooksecurefunc("CompactUnitFrame_SetUpFrame", function(frame)
         if frame.IsForbidden and frame:IsForbidden() then return end
         local n = frame.GetName and frame:GetName()
-        if n and (n:find("^CompactParty") or n:find("^CompactRaid")) then
+        if n and (n:find("^CompactParty") or n:find("^CompactRaid") or n:find("^ECCSolo")) then
             cadres[frame] = true
             AppliquerCadre(frame)
         end
     end)
+end
+
+---------------------------------------------------------------------------
+-- Cadre de groupe en solo : le joueur dans un cadre style raid quand il
+-- n'est pas groupé, avec tous les raccourcis. Les cadres Blizzard ne sont
+-- pas modifiés ; ce cadre disparaît dès qu'on rejoint un groupe.
+---------------------------------------------------------------------------
+
+local Solo, SoloPoignee
+
+-- Version simple, si le modèle de cadre Blizzard n'est pas disponible
+local function CreerUniteSimple(parent)
+    local u = CreateFrame("Button", "ECCSoloUnitSimple", parent, "SecureUnitButtonTemplate")
+    u:SetAttribute("unit", "player")
+    u:SetAttribute("*type1", "target")
+    u:SetAttribute("*type2", "togglemenu")
+
+    local fond = u:CreateTexture(nil, "BACKGROUND")
+    fond:SetAllPoints()
+    fond:SetColorTexture(0.1, 0.1, 0.1, 0.85)
+
+    local barre = CreateFrame("StatusBar", nil, u)
+    barre:SetPoint("TOPLEFT", 1, -1)
+    barre:SetPoint("BOTTOMRIGHT", -1, 1)
+    barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    local _, classe = UnitClass("player")
+    local c = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classe]
+    if c then barre:SetStatusBarColor(c.r, c.g, c.b) else barre:SetStatusBarColor(0, 0.8, 0) end
+
+    local nom = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    nom:SetPoint("CENTER")
+    nom:SetText(UnitName("player"))
+
+    local function MAJ()
+        local max = UnitHealthMax("player") or 1
+        if max <= 0 then max = 1 end
+        barre:SetMinMaxValues(0, max)
+        barre:SetValue(UnitHealth("player") or 0)
+    end
+    u:RegisterEvent("PLAYER_ENTERING_WORLD")
+    u:RegisterEvent("UNIT_HEALTH")
+    u:RegisterEvent("UNIT_MAXHEALTH")
+    pcall(u.RegisterEvent, u, "UNIT_HEALTH_FREQUENT")
+    u:SetScript("OnEvent", function(_, _, unit)
+        if not unit or unit == "player" then MAJ() end
+    end)
+    MAJ()
+    return u
+end
+
+local function CreerSolo()
+    if Solo or InCombatLockdown() then return end
+    Solo = CreateFrame("Frame", "ECCSolo", UIParent, "SecureHandlerStateTemplate")
+    local opt = DefaultCompactUnitFrameSetupOptions
+    Solo:SetSize((opt and opt.width) or 72, (opt and opt.height) or 36)
+    Solo:SetMovable(true)
+    Solo:SetClampedToScreen(true)
+    local pos = DB.solo.pos
+    if pos then
+        Solo:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+    else
+        Solo:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 30, -220)
+    end
+
+    -- Le même cadre que ceux du jeu, si le client le permet
+    local u
+    if CompactUnitFrame_SetUpFrame and CompactUnitFrame_SetUnit and DefaultCompactUnitFrameSetup then
+        local ok, f = pcall(CreateFrame, "Button", "ECCSoloUnit", Solo, "CompactUnitFrameTemplate")
+        if ok and f then
+            local ok2 = pcall(function()
+                f:SetAllPoints(Solo)
+                CompactUnitFrame_SetUpFrame(f, DefaultCompactUnitFrameSetup)
+                CompactUnitFrame_SetUnit(f, "player")
+            end)
+            if ok2 then u = f else f:Hide() end
+        end
+    end
+    if not u then
+        u = CreerUniteSimple(Solo)
+        u:SetAllPoints(Solo)
+    end
+    Ajouter(u)
+
+    -- Poignée pour déplacer le cadre (visible seulement en mode déplacement)
+    local p = CreateFrame("Frame", nil, Solo)
+    p:SetAllPoints(Solo)
+    p:SetFrameLevel(u:GetFrameLevel() + 10)
+    p:EnableMouse(true)
+    p:RegisterForDrag("LeftButton")
+    local t = p:CreateTexture(nil, "OVERLAY")
+    t:SetAllPoints()
+    t:SetColorTexture(0.2, 0.6, 1, 0.45)
+    local txt = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    txt:SetPoint("CENTER")
+    txt:SetText("Glisser")
+    p:SetScript("OnDragStart", function()
+        if not InCombatLockdown() then Solo:StartMoving() end
+    end)
+    p:SetScript("OnDragStop", function()
+        Solo:StopMovingOrSizing()
+        Solo:SetUserPlaced(false)
+        local pt, _, rp, x, y = Solo:GetPoint()
+        DB.solo.pos = { pt, rp, x, y }
+    end)
+    p:Hide()
+    SoloPoignee = p
+end
+
+function AppliquerSolo()
+    if not DB then return end
+    if InCombatLockdown() then
+        aRefaire = true
+        return
+    end
+    if DB.solo.actif then
+        CreerSolo()
+        if Solo then RegisterStateDriver(Solo, "visibility", "[group] hide; show") end
+    elseif Solo then
+        UnregisterStateDriver(Solo, "visibility")
+        Solo:Hide()
+        if SoloPoignee then SoloPoignee:Hide() end
+    end
+end
+
+local function BasculerDeplacement()
+    if not (DB.solo.actif and Solo) then
+        Message("active d'abord « Mon cadre en solo ».")
+        return
+    end
+    if not Solo:IsShown() then
+        Message("le cadre solo n'est visible que hors groupe.")
+        return
+    end
+    SoloPoignee:SetShown(not SoloPoignee:IsShown())
 end
 
 ---------------------------------------------------------------------------
@@ -609,7 +750,10 @@ local function CreerFenetre()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetScript("OnHide", function() if Selecteur then Selecteur:Hide() end end)
+    f:SetScript("OnHide", function()
+        if Selecteur then Selecteur:Hide() end
+        if SoloPoignee then SoloPoignee:Hide() end
+    end)
     table.insert(UISpecialFrames, f:GetName())
 
     local titre = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -643,7 +787,37 @@ local function CreerFenetre()
 
     local note = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     note:SetPoint("BOTTOMRIGHT", -16, 18)
-    note:SetText("« Cibler » et « Menu » sont en haut de la liste des sorts")
+    note:SetText("Cibler / Menu : en haut de la liste")
+
+    local caseSolo = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    caseSolo:SetSize(24, 24)
+    caseSolo:SetPoint("BOTTOMLEFT", 150, 11)
+    local libSolo = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    libSolo:SetPoint("LEFT", caseSolo, "RIGHT", 2, 0)
+    libSolo:SetText("Mon cadre en solo")
+    caseSolo:SetScript("OnClick", function(self)
+        if InCombatLockdown() then
+            ErreurCombat()
+            self:SetChecked(DB.solo.actif)
+            return
+        end
+        DB.solo.actif = self:GetChecked() and true or false
+        AppliquerSolo()
+    end)
+    caseSolo:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Mon cadre en solo")
+        GameTooltip:AddLine("Affiche ton personnage dans un cadre style raid quand tu n'es pas groupé, avec tous tes raccourcis. Il disparaît dès que tu rejoins un groupe.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    caseSolo:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f.caseSolo = caseSolo
+
+    local deplacer = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    deplacer:SetSize(90, 22)
+    deplacer:SetPoint("BOTTOMLEFT", 290, 12)
+    deplacer:SetText("Déplacer")
+    deplacer:SetScript("OnClick", BasculerDeplacement)
 
     local defaut = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     defaut:SetSize(130, 22)
@@ -669,6 +843,7 @@ local function BasculerFenetre()
         Fenetre:Hide()
     else
         RafraichirFenetre()
+        Fenetre.caseSolo:SetChecked(DB.solo.actif)
         Fenetre:Show()
     end
 end

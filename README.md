@@ -11,6 +11,7 @@ Addon World of Warcraft de *click casting* simple et léger : on lance ses sorts
 - **Actions spéciales** : « Cibler le joueur » (partout) et « Menu du joueur » (clics uniquement).
 - **Toutes les classes** : la liste des sorts vient du grimoire du personnage ; les réglages sont sauvegardés par personnage.
 - **Portrait du joueur ignoré** : il garde son comportement habituel (ciblage, menu).
+- **Mon cadre en solo** (activé par défaut) : quand tu n'es pas groupé, ton personnage s'affiche dans un cadre style raid avec tous tes raccourcis ; il disparaît dès que tu rejoins un groupe. Déplaçable avec le bouton « Déplacer » de la fenêtre de réglage.
 - Sorts enregistrés par ID : le rang le plus élevé connu est lancé automatiquement, sans souci d'accents ou d'apostrophes dans les noms.
 
 ## Installation
@@ -35,6 +36,7 @@ Dans la fenêtre :
 - **Glisser un sort** du grimoire sur une case : l'assigne directement.
 - **Clic droit** sur une case : l'effacer (le cadre retrouve son comportement d'origine).
 - **Config par défaut** : remet la configuration de départ de la classe.
+- **Mon cadre en solo** : affiche ou masque le cadre solo ; **Déplacer** active la poignée pour le positionner (cliquer de nouveau pour verrouiller).
 
 Les réglages ne peuvent pas être modifiés en combat (limitation du jeu).
 
