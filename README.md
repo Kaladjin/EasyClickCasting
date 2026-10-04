@@ -54,4 +54,4 @@ Le prêtre démarre avec une configuration prête à l'emploi ; les autres class
 
 ## Auteur
 
-Kaladin
+Kaladjin
